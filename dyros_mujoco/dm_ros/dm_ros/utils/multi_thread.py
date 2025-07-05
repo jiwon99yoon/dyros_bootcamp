@@ -33,7 +33,7 @@ class MujocoROSBridge(Node):
         self.model.opt.timestep = self.dt
        
         self.sm = SceneMonitor(self.model, self.data)
-        self.hand_eye = MujocoCameraBridge(self.model, camera_info)
+        #self.hand_eye = MujocoCameraBridge(self.model, camera_info)
       
         self.ctrl_dof = 8 # 7 + 1
         self.ctrl_step = 0
@@ -54,7 +54,7 @@ class MujocoROSBridge(Node):
                 # self.sm.getTargetObject()       
                 # self.sm.getSensor() 
                 self.robot_thread.start()    
-                self.hand_eye_thread.start()
+                #self.hand_eye_thread.start()
                 self.ros_thread.start()
 
 
@@ -70,7 +70,7 @@ class MujocoROSBridge(Node):
             print("\nSimulation interrupted. Closing viewer...")
             self.running = False
             self.robot_thread.join()
-            self.hand_eye_thread.join()
+            #self.hand_eye_thread.join()
             self.ros_thread.join()
             self.sm.destroy_node()
 
@@ -82,10 +82,10 @@ class MujocoROSBridge(Node):
                 with self.lock:
                     start_time = time.perf_counter()                        
 
-                    mujoco.mj_step(self.model, self.data)  # 시뮬레이션 실행
                     self.rc.updateModel(self.data, self.ctrl_step)                    
                     self.data.ctrl[:self.ctrl_dof] = self.rc.compute()   
-
+                    mujoco.mj_step(self.model, self.data)  # 시뮬레이션 실행
+                    
                     self.ctrl_step += 1
                     
                 self.time_sync(self.dt, start_time, False)
@@ -102,10 +102,10 @@ class MujocoROSBridge(Node):
             with self.lock:
                 start_time = time.perf_counter()  
                 renderer.update_scene(self.data, camera=hand_eye_id)
-                self.hand_eye.getImage(renderer.render(), self.ctrl_step)     
+                #self.hand_eye.getImage(renderer.render(), self.ctrl_step)     
 
             self.time_sync(1/self.fps, start_time, False)
-        self.hand_eye.destroy_node()
+        #self.hand_eye.destroy_node()
 
     def time_sync(self, target_dt, t_0, verbose=False):
         elapsed_time = time.perf_counter() - t_0
@@ -120,7 +120,7 @@ class MujocoROSBridge(Node):
         executor = MultiThreadedExecutor(num_threads=3)
         executor.add_node(self.rc.tm)
         executor.add_node(self.rc.jm)
-        executor.add_node(self.hand_eye)
+        #executor.add_node(self.hand_eye)
         executor.spin()
         executor.shutdown()
 

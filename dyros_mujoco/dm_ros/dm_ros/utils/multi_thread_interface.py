@@ -34,7 +34,7 @@ class MujocoROSBridge(Node):
         self.model.opt.timestep = self.dt
        
         self.sm = SceneMonitor(self.model, self.data)
-        self.hand_eye = MujocoCameraBridge(self.model, camera_info)
+        #self.hand_eye = MujocoCameraBridge(self.model, camera_info)
       
         self.ctrl_dof = 8 # 7 + 1 
         self.ctrl_step = 0
@@ -87,7 +87,7 @@ class MujocoROSBridge(Node):
                 # self.sm.getTargetObject()       
                 # self.sm.getSensor() 
                 self.robot_thread.start()    
-                self.hand_eye_thread.start()
+                #self.hand_eye_thread.start()
                 self.ros_thread.start()
 
 
@@ -103,7 +103,7 @@ class MujocoROSBridge(Node):
             print("\nSimulation interrupted. Closing viewer...")
             self.running = False
             self.robot_thread.join()
-            self.hand_eye_thread.join()
+            #self.hand_eye_thread.join()
             self.ros_thread.join()
             self.sm.destroy_node()
 
@@ -123,7 +123,8 @@ class MujocoROSBridge(Node):
                             target_js = self.latest_joint_set
 
                     if target_js is not None:
-                        # moveit이 보낸 궤적 가지고 target_js.position에 들어있는 값을 qpos로 덮어쓰기
+                        # moveit이 보낸 목표 관절 상태가 존재할 경우 -> 해당 값을 직접 MuJoCo에 반영 (feedforward)
+                        # 각 관절별로 목표 target_js.position에 들어있는 joint position을 MuJoCo의 qpos에 직접 할당
                         for i in range(self.ctrl_dof):
                             try:
                                 self.data.qpos[i] = float(target_js.position[i])
@@ -132,13 +133,14 @@ class MujocoROSBridge(Node):
                         self.data.qpos[7] = 0.04
                         self.data.qpos[8] = 0.04
                         # mujoco 시뮬레이션 한 스텝
-                        mujoco.mj_step(self.model, self.data)  # 시뮬레이션 실행
-                    
+                        mujoco.mj_step(self.model, self.data)  # 시뮬레이션 실행 (feedforward)
+                        self.rc.updateModel(self.data, self.ctrl_step)  #시뮬레이터 내부 상태를 DMController에 업데이트 : 강제로 지정한 qpos에 맞는 qvel, tau등을 업데이트 (추후 내부제어기로 전환될 때 상태 일치를 위해 update)
+
                     # <----------------- 윗 부분 추가 ------------------------>
                     else:   # moveit이 보낸 궤적이 없으면, 로봇 컨트롤러에서 계산한 값을 qpos로 덮어쓰기
-                        mujoco.mj_step(self.model, self.data)  # 시뮬레이션 실행
                         self.rc.updateModel(self.data, self.ctrl_step)  #시뮬레이터 내부 상태를 DMController에 업데이트                 
-                        self.data.ctrl[:self.ctrl_dof] = self.rc.compute() #DMController에서 계산한 제어값을 qpos로 덮어쓰기
+                        self.data.ctrl[:self.ctrl_dof] = self.rc.compute() #DMController에서 계산한 제어값
+                        mujoco.mj_step(self.model, self.data)  # 시뮬레이션 실행
 
                     self.ctrl_step += 1
                     
@@ -156,10 +158,10 @@ class MujocoROSBridge(Node):
             with self.lock:
                 start_time = time.perf_counter()  
                 renderer.update_scene(self.data, camera=hand_eye_id)
-                self.hand_eye.getImage(renderer.render(), self.ctrl_step)     
+               # self.hand_eye.getImage(renderer.render(), self.ctrl_step)     
 
             self.time_sync(1/self.fps, start_time, False)
-        self.hand_eye.destroy_node()
+        #self.hand_eye.destroy_node()
 
     def time_sync(self, target_dt, t_0, verbose=False):
         elapsed_time = time.perf_counter() - t_0
@@ -174,7 +176,7 @@ class MujocoROSBridge(Node):
         executor = MultiThreadedExecutor(num_threads=4)
         executor.add_node(self.rc.tm)
         executor.add_node(self.rc.jm) 
-        executor.add_node(self.hand_eye)  
+        #executor.add_node(self.hand_eye)  
         executor.add_node(self)        # MujocoROSBridge 자신도 spin대상에 포함 - joint qpos publish, subscribe 위해서
         executor.spin()
         executor.shutdown()
